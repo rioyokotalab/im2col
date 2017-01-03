@@ -61,10 +61,68 @@ def data_to_2d(data, filters, stride_h, stride_w, padding_h, padding_w):
     return cols
 
 
+def filter2d_to_orig(filter_2d, shape):
+    """Reshape (K, C*R*S) filter into (K, C, R, S).
+
+    Args:
+        filter_2d (numpy.ndarray): (K, C*R*S) filter.
+        shape        ((int, int)): (R, S)
+
+    Returns:
+        numpy.ndarray: Reshaped (K, C, R, S) filter.
+
+    Example:
+    >>> import numpy as np
+    >>> f = np.arange(24).reshape([2, 3, 2, 2])
+    >>> filter_2d = filter_to_2d(f)
+    >>> np.array_equal(f, filter2d_to_orig(filter_2d, (2, 2)))
+    True
+    """
+
+    R, S = shape
+    return filter_2d.reshape(filter_2d.shape[0], -1, R, S)
+
+
+def data2d_to_orig(data_2d, data_shape, filter_shape, stride_h, stride_w, padding_h, padding_w):
+    """Reshape (C*R*S, N*P*Q) data into (N,C,H,W).
+
+    Args:
+        data_2d           (numpy.ndarray): (C*R*S, N*P*Q) data.
+        data_shape ((int, int, int, int)): (N,C,H,W)
+        filter_shape         ((int, int)): (R,S)
+        stride_h, strite_w          (int): v / h strides.
+        padding_h, padding_w        (int): v / h paddings.
+
+    Returns:
+        numppy.ndarray: Reshaped (N,C,H,W) data.
+
+    Example:
+    >>> import numpy as np
+    >>> data = np.arange(54).reshape([2,3,3,3])
+    >>> filters = np.arange(24).reshape([2,3,2,2])
+    >>> data_2d = data_to_2d(data, filters, 1, 1, 0, 0)
+    >>> np.array_equal(data, data2d_to_orig(data_2d, data.shape, (2, 2), 1, 1, 0, 0))
+    True
+    """
+
+    N, C, H, W = data_shape
+    R, S = filter_shape
+    H_padded, W_padded = H + 2 * padding_h, W + 2 * padding_w
+    x_padded = np.zeros((N, C, H_padded, W_padded), dtype=data_2d.dtype)
+    k, i, j = get_im2col_indices(data_shape, (0, 0, R, S), stride_h, stride_w, padding_h, padding_w)
+
+    cols = np.hsplit(data_2d, N)
+    x_padded[:, k, i, j] += cols
+
+    if padding_h == 0 and padding_w == 0:
+        return x_padded
+    return x_padded[:, :, padding_w:-padding_w, padding_h:-padding_h]
+
+
 # Taken from https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/im2col.py
 def get_im2col_indices(x_shape, filters_shape, stride_h, stride_w, padding_h, padding_w):
     N, C, H, W = x_shape
-    K, _, R, S = filters_shape
+    _, _, R, S = filters_shape
 
     # calculate output shape P, Q
     assert (H - R + 2 * padding_h) % stride_h == 0
